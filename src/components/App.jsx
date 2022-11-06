@@ -1,88 +1,117 @@
-import React, {Component} from 'react';
-import {ContactForm} from "./ContactForm/ContactForm";
-import {ContactsList} from "./ContactsList/ContactsList";
-import { Filter } from './filter/Filter';
+import { Component } from "react";
+import { fetchImages } from "./Api/Api";
+import { Button } from "./Button/Button";
+import { ImageGallery } from "./ImageGallery/ImageGallery";
+import { ImageGalleryItem } from "./ImageGalleryItem/ImageGalleryItem";
+import { Modal } from "./Modal/Modal";
+import { Searchbar } from "./Searchbar/Searchbar";
+import { Loader } from "./Loader/Loader";
 
 const INITIAL_STATE ={
-   contacts: [
-      {id: 'id-1', name: 'Rosie Simpson', phone: '459-12-56'},
-      {id: 'id-2', name: 'Hermione Kline', phone: '443-89-12'},
-      {id: 'id-3', name: 'Eden Clements', phone: '645-17-79'},
-      {id: 'id-4', name: 'Annie Copeland', phone: '227-91-26'},
-    ],
-    filter: '',
-}
-export class App extends Component {
-   state = {
-      contacts: [],
-      filter: '',
-      name: '',
-      phone: ''
-    }
-/////////////
-componentDidMount(){
-   const json = localStorage.getItem('contacts');
-   if(json == null){
-      localStorage.setItem('contacts', JSON.stringify(INITIAL_STATE.contacts));
-   }else {
-      const parseContacts = JSON.parse(json);
-      this.setState({contacts:parseContacts});
-   }
-}
-componentDidUpdate(prevProps,prevState){
-   if (prevState.contacts.length !== this.state.contacts.length){
-      const newContacts = this.state.contacts;
-      const json = JSON.stringify(newContacts);
-      localStorage.setItem('contacts',json);
-   }
-}
-/////////////
+   images: [],
+  error: null,
+  isLoading: false,
+  search: '',
+  isModalOpen: false,
+  largeImage: '',
+  page: 1,
+};
 
+export class App extends Component{
+   state = { ...INITIAL_STATE };
 
-
-   handleAddContact = (newContact) =>
-      this.setState(({contacts}) =>({
-         contacts:[...contacts, newContact],
-   }))
-
-   handleCheckUnique = (name) =>{
-      const{ contacts } = this.state
-
-      const isExistContact = !!contacts.find((contact) => contact.name === name)
-      isExistContact && alert ('Contact is alredy exist')
-      return !isExistContact 
-   }
+   handleSubmit = evt => {
+     evt.preventDefault();
  
-   handleRemoveContact = (id) => 
-      this.setState(({ contacts })=>({contacts: contacts.filter((contact) => contact.id !==id) }))
-   
-   handleFilterChange = (filter) => this.setState({ filter })
+     const form = evt.currentTarget;
+     const input = form.elements.input.value;
+     this.setState({ images: [], search: input, page: 1 });
+     form.reset();
 
-   getVisibleContacts = () => {
-      const { contacts, filter } = this.state;
-      return contacts.filter((contact) => contact.name.toLowerCase().includes( filter.toLowerCase() ))
-   }
-   render(){
-      const { filter } = this.state
-      const visibleContacts = this.getVisibleContacts()
-      return(
-         <div style={{
-            height: '100%',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'flex-start',
-            flexDirection: 'column',
-            fontSize: 20,
-            color: '#010101',
-            padding: '20px 10px',
-          }}>
-         <h2>Form Contact</h2>  
-         <ContactForm onAdd={this.handleAddContact} onCheckUnique = {this.handleCheckUnique}/>      
-         <h2>Contacts List</h2>
-         <Filter filter={filter} onChange={this.handleFilterChange}/>
-         <ContactsList contacts={visibleContacts} onRemove = {this.handleRemoveContact}/>
-         </div>
-         )
-   }
+};
 
+async componentDidUpdate(prevProps, prevState) {
+   if (
+     prevState.page !== this.state.page ||
+     prevState.search !== this.state.search
+   ) {
+     this.setState({ isLoading: true });
+     try {
+       const fetch = await fetchImages(this.state.search, this.state.page, 12);
+       this.setState(({ images }) => ({ images: [...images, ...fetch.hits] }));
+       document.addEventListener('keyup', e => {
+         if (e.key === 'Escape') {
+           this.closeModal();
+         }
+       });
+     } catch (error) {
+       console.log(error.message);
+     } finally {
+       this.setState({ isLoading: false });
+     }
+   }
+ }
+
+ async componentDidMount() {
+   this.setState({ images: [], page: 1 });
+ }
+
+ componentWillUnmount() {
+   document.removeEventListener('keyup', e => {});
+ }
+
+ handleImageClick = imageID => {
+   const element = this.state.images.filter(image => {
+     return image.id === imageID;
+   });
+   const clickImg = element[0];
+   this.setState({ isModalOpen: true, largeImage: clickImg });
+ };
+
+ closeModal = () => {
+   this.setState({ isModalOpen: false });
+ };
+
+ loadMoreClick = () => {
+   this.setState({ isLoading: true });
+   try {
+     this.setState(({ page }) => ({ page: page + 1 }));
+   } catch (error) {
+     console.log(error.message);
+   } finally {
+     this.setState({ isLoading: false });
+   }
+ };
+
+ render() {
+   const { images, largeImage, isModalOpen, isLoading, page } = this.state;
+   return (
+     <div
+       style={{
+         display: 'grid',
+         gridTemplateColumns: '1fr',
+         gridGap: '16px',
+         paddingBottom: '24px',
+       }}
+     >
+       {isModalOpen ? (
+         <Modal clickImage={largeImage} handleClose={this.closeModal} />
+       ) : null}
+       <Searchbar handleSubmit={this.handleSubmit} />
+       {isLoading & (page <= 1) ? <Loader /> : null}
+       <ImageGallery>
+         <ImageGalleryItem
+           images={images}
+           onClick={this.handleImageClick}
+           loading={isLoading}
+         />
+       </ImageGallery>
+       {isLoading & (page >= 2) ? <Loader /> : null}
+
+       {images.length === 0 ? null : (
+         <Button handleClick={this.loadMoreClick} />
+       )}
+     </div>
+   );
+ }
 }
